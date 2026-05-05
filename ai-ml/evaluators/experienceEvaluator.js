@@ -64,26 +64,15 @@ export function extractExperienceInYears(text = "") {
   }
 
 
-  // Examples: "3-5 years", "2 to 4 years", "1.5–3 yrs"
-  const rangePattern =
-    /(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)/gi;
-  for (const match of content.matchAll(rangePattern)) {
-    const lower = toNumber(match[1]);
-    const upper = toNumber(match[2]);
-    detectedValues.push((lower + upper) / 2);
-    combinedMatchedIndices.push({
-      start: match.index,
-      end: match.index + match[0].length,
-    });
+  // ================================
+  // 3. YEAR RANGE (3-5 years)
+  // ================================
+  const rangeRegex = /(\d+(?:\.\d+)?)\s*(?:-|–|to)\s*(\d+(?:\.\d+)?)\s*(year|years|yr|yrs)/g;
+  while ((match = rangeRegex.exec(clean))) {
+    const low = parseFloat(match[1]);
+    const high = parseFloat(match[2]);
+    maxYears = Math.max(maxYears, (low + high) / 2);
   }
-
-  // Examples: "3 years", "2+ years", "1 yr"
-  const yearsPattern = /(\d+(?:\.\d+)?)\s*\+?\s*(?:years?|yrs?)/gi;
-  for (const match of content.matchAll(yearsPattern)) {
-    if (isOverlapping(match.index)) continue;
-    detectedValues.push(toNumber(match[1]));
-
- 
   // ================================
   // 4. PLUS (2+ years)
   // ================================
@@ -156,4 +145,4 @@ export function experienceEvaluator({
     requiredExperience: Number(requiredYears.toFixed(2)),
     experienceGap: Number(gap.toFixed(2)),
   };
-}}
+}
