@@ -64,14 +64,27 @@ export const atsOptimizationEvaluator = ({ resumeData, weight = 0.15 }) => {
     suggestions.push("Use simple text blocks instead of nested tables for better parsing.");
   }
 
+  const finalScore = Math.max(0, Math.min(100, Math.round(score)));
+  const currentWeight = 0.1; // Standardized weight
+
   return {
-    score: Math.max(0, Math.min(100, Math.round(score))),
-    weight,
-    sectionResults,
-    contactResults,
-    feedback,
-    suggestions,
-    name: "atsOptimization"
+    key: "ats_optimization",
+    label: "ATS Optimization",
+    score: finalScore,
+    weight: currentWeight,
+    weightedScore: Math.round(finalScore * currentWeight),
+    summary: finalScore > 80 
+      ? "Your resume format is highly ATS-friendly." 
+      : `Missing ${missingSections.length + missingContact.length} optimization elements.`,
+    details: {
+      sectionResults,
+      contactResults,
+      feedback,
+      suggestions
+    },
+    meta: {
+      hasTables
+    }
   };
 };
 

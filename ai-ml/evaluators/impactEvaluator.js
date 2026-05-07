@@ -58,13 +58,25 @@ export const impactEvaluator = ({ resumeText = "", weight = 0.2 }) => {
     suggestions.push("Use phrases like 'resulting in', 'achieved by', or 'led to' followed by a metric.");
   }
 
+  const currentWeight = 0.15; // Standardized weight
+
   return {
+    key: "impact_match",
+    label: "Measurable Impact",
     score,
-    weight,
-    totalFindings,
-    findings,
-    feedback,
-    suggestions,
-    name: "impactMatch"
+    weight: currentWeight,
+    weightedScore: Math.round(score * currentWeight),
+    summary: score > 70 
+      ? "Strong evidence of results-oriented achievements." 
+      : "The resume describes duties but lacks enough quantifiable results (numbers, %, $).",
+    details: {
+      totalFindings,
+      findings,
+      feedback,
+      suggestions
+    },
+    meta: {
+      powerVerbCount
+    }
   };
 };

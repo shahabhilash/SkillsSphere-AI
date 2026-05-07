@@ -107,7 +107,7 @@ export function extractExperienceInYears(text = "") {
 }
 
 // --- MAIN EVALUATOR ---
-export function experienceEvaluator({
+export const experienceEvaluator = ({
   candidateExperienceText = "",
   jobDescription = "",
   weight = weights.experience ?? 0.20,
@@ -115,16 +115,24 @@ export function experienceEvaluator({
   const candidateExperience = extractExperienceInYears(candidateExperienceText);
   const requiredExperience = extractExperienceInYears(jobDescription);
 
-  if (!requiredYears) {
+  const candidateYears = candidateExperience;
+  const requiredYears = requiredExperience;
+
+  if (requiredYears === 0) {
     return {
-      score: 0,
+      key: "experience_match",
+      label: "Experience Match",
+      score: 100, // If no experience is required, candidate technically matches
       weight,
-      feedback: [
-        "Could not detect required experience from the job description",
-      ],
-      candidateExperience: Number(candidateYears.toFixed(2)),
-      requiredExperience: 0,
-      experienceGap: 0,
+      weightedScore: Math.round(100 * weight),
+      summary: "No specific years of experience required for this role.",
+      details: {
+        feedback: ["Could not detect required experience from the job description"],
+        candidateExperience: Number(candidateYears.toFixed(2)),
+        requiredExperience: 0,
+        experienceGap: 0,
+      },
+      meta: {}
     };
   }
 
@@ -152,11 +160,22 @@ export function experienceEvaluator({
   feedback.push(`Experience gap: ${gap.toFixed(2)} years`);
 
   return {
+    key: "experience_match",
+    label: "Experience Match",
     score,
     weight,
-    feedback,
-    candidateExperience: Number(candidateYears.toFixed(2)),
-    requiredExperience: Number(requiredYears.toFixed(2)),
-    experienceGap: Number(gap.toFixed(2)),
+    weightedScore: Math.round(score * weight),
+    summary: score === 100 
+      ? "Candidate meets the required experience level."
+      : `Candidate is short by approximately ${gap.toFixed(1)} years of experience.`,
+    details: {
+      candidateExperience: Number(candidateYears.toFixed(2)),
+      requiredExperience: Number(requiredYears.toFixed(2)),
+      experienceGap: Number(gap.toFixed(2)),
+      feedback
+    },
+    meta: {
+      isSeniorRole: requiredYears >= 5
+    }
   };
 }

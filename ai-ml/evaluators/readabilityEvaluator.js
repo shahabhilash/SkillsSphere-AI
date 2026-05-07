@@ -66,14 +66,27 @@ export default function readabilityEvaluator({ resumeText = "", weight = 0.1 }) 
      if (lowVerbDensity) score -= 20;
   }
   
+  const finalScore = Math.max(0, Math.min(100, Math.round(score)));
+
   return {
-    score: Math.max(0, Math.min(100, Math.round(score))),
+    key: "readability_match",
+    label: "Readability & Impact",
+    score: finalScore,
     weight,
-    powerVerbCount,
-    passiveVoiceCount,
-    suggestions,
-    relevantVerbs: relevantVerbs,
-    name: "readabilityMatch"
+    weightedScore: Math.round(finalScore * weight),
+    summary: finalScore > 80 
+      ? "Strong use of action verbs and active voice." 
+      : "Some bullets are weak or use passive voice, which reduces the impact of your experience.",
+    details: {
+      powerVerbCount,
+      passiveVoiceCount,
+      suggestions,
+      relevantVerbs: relevantVerbs,
+    },
+    meta: {
+      sentenceCount: sentences.length,
+      isTechnicalDomain: isTechnical
+    }
   };
 }
 

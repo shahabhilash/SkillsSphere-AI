@@ -96,7 +96,7 @@ export const analyzeResume = async (req, res) => {
   if (parsedData.skills?.length && jobSkills.length) {
     evaluators.push(skillMatchEvaluator);
   }
-  if (trimmedJobDescription && parsedData.resumeText) {
+  if (jobDescription && parsedData.resumeText) {
     evaluators.push(keywordMatchEvaluator);
     evaluators.push(semanticMatchEvaluator);
   }
@@ -147,35 +147,10 @@ export const analyzeResume = async (req, res) => {
   }
 };
 
-  const skillMatch = toLegacySkillMatch(pipelineResult);
-  const keywordMatch = toLegacyKeywordMatch(pipelineResult);
-  const experienceMatch = toLegacyExperienceMatch(pipelineResult);
-  const semanticMatch = toLegacySemanticMatch(pipelineResult);
 export const getResumeResult = asyncHandler(async (req, res, next) => {
   const { id } = req.params;
   const resume = await Resume.findById(id).select("-resumeText").lean();
 
-
-  const { resumeText, ...resumeFields } = parsedData;
-
-  const savedResume = await controllerDependencies.createResume({
-    ...resumeFields,
-    jobSkills,
-    jobDescription: trimmedJobDescription || null,
-    skillMatch,
-    keywordMatch,
-    experienceMatch,
-    semanticMatch,
-    evaluatorBreakdown: pipelineResult.evaluators,
-    aggregatedScore: pipelineResult.score,
-    file: fileData,
-  });
-
-  const successParts = [];
-  if (Object.keys(skillMatch).length > 0) successParts.push("skill match");
-  if (Object.keys(keywordMatch).length > 0) successParts.push("keyword relevance");
-  if (Object.keys(experienceMatch).length > 0) successParts.push("experience fit");
-  if (Object.keys(semanticMatch).length > 0) successParts.push("semantic alignment");
   if (!resume) {
     return next(new AppError("Resume not found", 404));
   }
@@ -187,16 +162,8 @@ export const getResumeResult = asyncHandler(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    message: invalidJson ? "Resume parsed and saved, but jobSkills JSON format is invalid" : evalSummary,
-    resumeId: savedResume._id,
-    data: resumeFields,
-    skillMatch,
-    keywordMatch,
-    experienceMatch,
-    semanticMatch,
-    file: fileData,
-    evaluatorBreakdown: pipelineResult.evaluators,
-    overallScore: pipelineResult.score,
+    message: "Resume details fetched successfully",
+    data: resume,
   });
 });
 

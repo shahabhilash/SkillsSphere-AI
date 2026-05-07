@@ -105,12 +105,25 @@ export default function consistencyEvaluator({
     feedback.push("Content is well structured and non-repetitive");
   }
 
+  const currentWeight = 0.05; // Standardized weight
+
   return {
+    key: "consistency_match",
+    label: "Content Consistency",
     score,
-    weight,
-    overusedWords,
-    duplicateSentences,
-    genericPhrases,
-    feedback
+    weight: currentWeight,
+    weightedScore: Math.round(score * currentWeight),
+    summary: score > 80 
+      ? "The resume content is clear and professionally structured." 
+      : "Detected repetitive phrasing or generic cliches that could be improved.",
+    details: {
+      overusedWords,
+      duplicateSentences,
+      genericPhrases,
+      feedback
+    },
+    meta: {
+      penaltyApplied: penalty
+    }
   };
 }

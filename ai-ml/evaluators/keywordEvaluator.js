@@ -74,13 +74,20 @@ export const keywordEvaluator = ({
   // Normalize the search list to ensure synonyms match
   const keywordsToSearch = normalizeSkillArray(rawKeywordsToSearch);
 
-  if (jdKeywords.length === 0) {
+  if (keywordsToSearch.length === 0) {
     return {
+      key: "keyword_match",
+      label: "Keyword Optimization",
       score: 0,
       weight: weights.keyword ?? 0.10,
-      feedback: ["No extractable keywords found in the job description"],
-      matchedKeywords: [],
-      missingKeywords: [],
+      weightedScore: 0,
+      summary: "No relevant technical keywords could be extracted from the job description.",
+      details: {
+        feedback: ["No extractable keywords found in the job description"],
+        matchedKeywords: [],
+        missingKeywords: [],
+      },
+      meta: {}
     };
   }
 
@@ -118,12 +125,24 @@ export const keywordEvaluator = ({
     feedback.push(`Consider adding: ${k}`);
   });
 
+  const currentWeight = weights.keyword ?? 0.10;
+
   return {
+    key: "keyword_match",
+    label: "Keyword Optimization",
     score,
-    weight: weights.keyword ?? 0.10,
-    feedback,
-    matchedKeywords: matchedKeywords.slice(0, 15),
-    missingKeywords: missingKeywords.slice(0, 15),
-    name: "keywordMatch"
+    weight: currentWeight,
+    weightedScore: Math.round(score * currentWeight),
+    summary: score > 80 
+      ? "Strong keyword alignment detected." 
+      : `Missing ${missingKeywords.length} important keywords identified in the job description.`,
+    details: {
+      matchedKeywords: matchedKeywords.slice(0, 15),
+      missingKeywords: missingKeywords.slice(0, 15),
+      feedback
+    },
+    meta: {
+      totalKeywordsAnalyzed: total
+    }
   };
 };

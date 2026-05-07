@@ -51,12 +51,24 @@ export const techStandardEvaluator = ({ resumeText = "", weight = 0.15 }) => {
     suggestions.push("Add Cloud/DevOps skills (Docker, AWS) to demonstrate modern deployment knowledge.");
   }
 
+  const currentWeight = 0.05; // Standardized weight
+
   return {
+    key: "tech_standard",
+    label: "Technical Breadth",
     score,
-    weight,
-    domainMatches,
-    feedback,
-    suggestions,
-    name: "techStandard"
+    weight: currentWeight,
+    weightedScore: Math.round(score * currentWeight),
+    summary: score > 70 
+      ? "Well-rounded technical profile across multiple domains." 
+      : "The technical profile appears narrow; consider highlighting more cross-stack tools.",
+    details: {
+      domainMatches,
+      feedback,
+      suggestions
+    },
+    meta: {
+      domainsDetected: domainsWithMatches.length
+    }
   };
 };
