@@ -1,18 +1,30 @@
+import { normalizeSkillArray } from "../utils/skillNormalizer.js";
 import { weights } from "../config/weights.config.js";
 
 export const skillEvaluator = ({ resumeSkills = [], jobSkills = [] }) => {
+  const currentWeight = weights.skill ?? 0.50;
   // Use the optimized normalizer
   const normResume = normalizeSkillArray(resumeSkills);
   const normJob = normalizeSkillArray(jobSkills);
 
   if (jobSkills.length === 0 || normJob.length === 0) {
     return {
+      key: "skill_match",
+      label: "Skill Match",
       score: 0,
-      weight: weights.skill ?? 0.50,
-      feedback: ["No job skills provided for comparison"],
-      matchedSkills: [],
-      missingSkills: [],
-      extraSkills: normResume,
+      weight: currentWeight,
+      weightedScore: 0,
+      summary: "No job skills provided for comparison",
+      details: {
+        feedback: ["No job skills provided for comparison"],
+        matchedSkills: [],
+        missingSkills: [],
+        extraSkills: normResume,
+      },
+      meta: {
+        jobSkillCount: 0,
+        resumeSkillCount: normResume.length
+      }
     };
   }
 
@@ -35,12 +47,24 @@ export const skillEvaluator = ({ resumeSkills = [], jobSkills = [] }) => {
   if (extra.length > 0) feedback.push(`Consider prioritizing job-relevant skills over extras.`);
 
   return {
+    key: "skill_match",
+    label: "Skill Match",
     score,
-    weight: weights.skill ?? 0.50,
-    feedback,
-    matchedSkills: matched,
-    missingSkills: missing,
-    extraSkills: extra,
+    weight: currentWeight,
+    weightedScore: Math.round(score * currentWeight),
+    summary: matched.length > 0 
+      ? `Matched ${matched.length} out of ${normJob.length} required skills.`
+      : "No matching skills found for this position.",
+    details: {
+      matchedSkills: matched,
+      missingSkills: missing,
+      extraSkills: extra,
+      feedback
+    },
+    meta: {
+      jobSkillCount: normJob.length,
+      resumeSkillCount: normResume.length
+    }
   };
 };
 

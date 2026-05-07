@@ -18,14 +18,29 @@ export async function runPipeline({
   jobDescription = "",
 }) {
   // ADD — safe wrapper for all evaluator calls
-  async function safeEval(name, fn, fallback = { score: 0, error: true }) {
+  async function safeEval(name, fn, fallback = { score: 0, error: true, details: {}, meta: {} }) {
     try {
       const result = await fn();
-      // Use the Zod contract to validate the output shape
-      return validateEvaluatorResult({ ...result, name: result.name || name });
+      // Remove name from validation as it's not in the strict schema
+      const { name: _name, ...dataToValidate } = { ...result };
+      const validated = validateEvaluatorResult({ 
+        key: dataToValidate.key || name, 
+        label: dataToValidate.label || name,
+        ...dataToValidate 
+      });
+      // Add name back for compatibility with legacy aggregator code
+      return { ...validated, name };
     } catch (err) {
       console.error(`[runPipeline] Evaluator "${name}" contract violation or failure:`, err.message);
-      return { ...fallback, name };
+      return { 
+        ...fallback, 
+        key: name, 
+        label: name,
+        name, // compatibility
+        weight: 0,
+        weightedScore: 0,
+        summary: "Evaluator failed to run."
+      };
     }
   }
 
