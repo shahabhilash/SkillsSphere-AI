@@ -2,6 +2,7 @@ import multer from "multer";
 import fs from "fs";
 import path from "path";
 import { validateResumeBufferSignatureSync } from "../utils/validateFileSignature.js";
+import { safeDeletePhysicalFile } from "../utils/fileUtils.js";
 
 const uploadDirectory = path.join(process.cwd(), "src", "uploads");
 
@@ -41,12 +42,7 @@ const upload = multer({
 });
 
 export const removeUploadedFile = (filePath) => {
-  if (!filePath) return;
-  try {
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  } catch {
-    // Best-effort cleanup after rejected upload
-  }
+  safeDeletePhysicalFile(filePath);
 };
 
 const buildStoredFilename = (originalName) => {
