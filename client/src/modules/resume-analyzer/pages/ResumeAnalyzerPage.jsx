@@ -41,6 +41,7 @@ const ResumeAnalyzerPage = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
+
   // Track whether we are showing a DB-loaded scan (not a fresh live analysis)
   const [isLoadingLatest, setIsLoadingLatest] = useState(true);
   const [isViewingLatest, setIsViewingLatest] = useState(false);
