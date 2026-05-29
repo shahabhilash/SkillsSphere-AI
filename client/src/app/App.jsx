@@ -2,7 +2,6 @@ import React, { useEffect, Suspense, lazy } from "react";
 import { Routes, Route } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchCurrentUser, logoutUser } from "../features/auth/authSlice";
-import ChatWidget from "../modules/ai-assistant/components/ChatWidget";
 const LandingPage = lazy(() => import("../modules/landing/LandingPage"));
 const DashboardPage = lazy(() => import("../modules/dashboard/DashboardPage"));
 const CoverLetterHistoryPage = lazy(() => import("../modules/dashboard/pages/CoverLetterHistoryPage"));
@@ -35,6 +34,7 @@ const TutorInterviewConsole = lazy(() => import("../modules/mock-interview/pages
 const TutorInterviewsList = lazy(() => import("../modules/mock-interview/pages/TutorInterviewsList"));
 const TutorAnalyticsDashboard = lazy(() => import("../modules/analytics/TutorAnalyticsDashboard"));
 const NotificationsPage = lazy(() => import("../modules/notifications/pages/NotificationsPage"));
+const ChatWidget = lazy(() => import("../modules/ai-assistant/components/ChatWidget"));
 import ProtectedRoute from "../shared/components/ProtectedRoute";
 import SocketNotificationListener from "../shared/components/SocketNotificationListener";
 import { LoadingState } from "../shared/components";
@@ -64,7 +64,7 @@ function App() {
     <div className="min-h-screen bg-[var(--background)] text-[var(--text-main)] transition-colors duration-300">
       <SocketNotificationListener />
 
-      <Suspense fallback={<LoadingState message="Loading module..." />}>
+      <Suspense fallback={<LoadingState title="Loading module..." />}>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route
@@ -281,7 +281,9 @@ function App() {
         />
       </Routes>
       </Suspense>
-      <ChatWidget />
+      <Suspense fallback={null}>
+        <ChatWidget />
+      </Suspense>
     </div>
   );
 }
