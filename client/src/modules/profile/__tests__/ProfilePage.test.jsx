@@ -14,6 +14,8 @@ vi.mock("../services/profileService", () => ({
   deleteProfile: vi.fn(),
   uploadAvatar: vi.fn(),
   removeAvatar: vi.fn(),
+  getUserPreferences: vi.fn(async () => ({})),
+  updateUserPreferences: vi.fn(async () => ({})),
 }));
 
 vi.mock("../../../services/fileService", () => ({
@@ -48,8 +50,6 @@ const createStore = (user = baseUser) =>
     },
   });
 
-import { ToastProvider } from "../../../shared/components/toast/ToastProvider";
-import { ThemeProvider } from "../../../shared/contexts/ThemeContext";
 import { ThemeProvider } from "../../../shared/contexts/ThemeContext";
 import { ToastProvider } from "../../../shared/components/toast/ToastProvider";
 
@@ -58,7 +58,6 @@ const renderProfile = (user = baseUser) =>
     <Provider store={createStore(user)}>
       <MemoryRouter>
         <ThemeProvider>
-          <ProfilePage />
           <ToastProvider>
             <ProfilePage />
           </ToastProvider>
