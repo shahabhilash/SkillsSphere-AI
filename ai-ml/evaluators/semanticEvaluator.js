@@ -1,6 +1,18 @@
 import crypto from "crypto";
-import mongoose from "mongoose";
-import SemanticCache from "../../server/src/database/models/SemanticCache.js";
+let mongoose = null;
+let SemanticCache = null;
+try {
+  const m = await import('mongoose');
+  mongoose = m.default ?? m;
+} catch (e) {
+  mongoose = null;
+}
+try {
+  const sc = await import('../../server/src/database/models/SemanticCache.js');
+  SemanticCache = sc.default ?? sc;
+} catch (e) {
+  SemanticCache = null;
+}
 
 const HF_MODEL_URL =
   "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/sentence-similarity";
