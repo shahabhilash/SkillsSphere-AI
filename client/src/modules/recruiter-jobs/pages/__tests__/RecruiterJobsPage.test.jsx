@@ -87,7 +87,6 @@ const renderWithProviders = (component, { store = createMockStore() } = {}) => {
   return render(
     <Provider store={store}>
       <MemoryRouter>
-        <ToastProvider>{component}</ToastProvider>
         <ToastProvider>
           {component}
         </ToastProvider>

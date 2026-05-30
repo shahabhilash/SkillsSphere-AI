@@ -56,7 +56,6 @@ const renderProfile = (user = baseUser) =>
     <Provider store={createStore(user)}>
       <MemoryRouter>
         <ThemeProvider>
-          <ProfilePage />
           <ToastProvider>
             <ProfilePage />
           </ToastProvider>
