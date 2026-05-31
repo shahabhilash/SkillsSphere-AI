@@ -114,3 +114,5 @@ router.get("/:id", getSession);
 router.post("/:id/answer", aiActionLimiter, upload.single("audio"), submitAnswer);
 router.post("/:id/complete", completeInterview);
 router.get("/:id/results", getSessionResults);
+
+export default router;
