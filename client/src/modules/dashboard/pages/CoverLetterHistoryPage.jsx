@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import Navbar from "../../../shared/landing/Navbar";
-import Footer from "../../../modules/landing/components/Footer";
+import Navbar from "../../../shared/components/Navbar";
+import Footer from "../../../shared/components/Footer";
 
 import { getCoverLetterHistory } from "../services/dashboardService";
 import { 
@@ -17,6 +17,8 @@ import { generateCoverLetter } from "../../resume-analyzer/services/resumeServic
 import { useDocumentTitle } from "../../../hooks/useDocumentTitle";
 import { useToast } from "../../../shared/components/toast/ToastProvider";
 
+
+import logger from "../../../utils/logger";
 
 const CoverLetterHistoryPage = () => {
   useDocumentTitle("Cover Letter History");
@@ -38,7 +40,7 @@ const CoverLetterHistoryPage = () => {
         setError("Failed to load cover letter history.");
       }
     } catch (err) {
-      console.error(err);
+      logger.error(err);
       setError("An error occurred while fetching history.");
     } finally {
       setLoading(false);

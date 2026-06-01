@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
 import { Plus, Briefcase, Search, ArrowLeft } from "lucide-react";
-import Navbar from "../../../shared/landing/Navbar";
-import Footer from "../../../modules/landing/components/Footer";
+import Navbar from "../../../shared/components/Navbar";
+import Footer from "../../../shared/components/Footer";
 
 import Button from "../../../shared/components/Button";
 import Input from "../../../shared/components/Input";
@@ -19,6 +19,8 @@ import {
   deleteJobPosting,
 } from "../services/jobPostingService";
 import { useToast } from "../../../shared/components/toast/ToastProvider";
+
+import logger from "../../../utils/logger";
 
 const STATUS_FILTERS = [
   { value: "all", label: "All Jobs" },
@@ -55,7 +57,7 @@ const RecruiterJobsPage = () => {
       setError(
         err.message || "Failed to load job postings. Please try again later.",
       );
-      console.error("Failed to fetch jobs:", err);
+      logger.error("Failed to fetch jobs:", err);
     } finally {
       setLoading(false);
     }
@@ -83,7 +85,7 @@ const RecruiterJobsPage = () => {
               "Failed to load job postings. Please try again later.",
           );
         }
-        console.error("Failed to fetch jobs:", err);
+        logger.error("Failed to fetch jobs:", err);
       } finally {
         if (!ignore) {
           setLoading(false);
@@ -157,7 +159,7 @@ const RecruiterJobsPage = () => {
 
   const handleViewRecommendations = (job) => {
     // navigate(`/recruiter/jobs/${job.id}/recommendations`);
-    console.log("View recommendations", job);
+    logger.log("View recommendations", job);
   };
 
   const handleViewApplicants = (job) => {

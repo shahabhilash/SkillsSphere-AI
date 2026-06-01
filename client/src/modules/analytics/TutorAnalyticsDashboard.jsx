@@ -4,11 +4,13 @@ import { TrendingUp, Users, AlertCircle, ArrowLeft } from "lucide-react";
 import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 import { apiRequest } from "../../services/apiClient.js";
-import Navbar from "../../shared/landing/Navbar";
-import Footer from "../../modules/landing/components/Footer";
+import Navbar from "../../shared/components/Navbar";
+import Footer from "../../shared/components/Footer";
 
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 
+
+import logger from "../../utils/logger";
 
 // Custom Treemap content for better styling
 const CustomizedContent = (props) => {
@@ -64,7 +66,7 @@ const TutorAnalyticsDashboard = () => {
           setError(result.message || "Failed to load data");
         }
       } catch (err) {
-        console.error(err);
+        logger.error(err);
         setError("Network error occurred while fetching analytics");
       } finally {
         setLoading(false);

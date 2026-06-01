@@ -3,11 +3,13 @@ import { Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { Clock, CheckCircle, Video, ArrowRight, User, ArrowLeft } from "lucide-react";
 import { apiRequest } from "../../../services/apiClient.js";
-import Navbar from "../../../shared/landing/Navbar";
-import Footer from "../../../modules/landing/components/Footer";
+import Navbar from "../../../shared/components/Navbar";
+import Footer from "../../../shared/components/Footer";
 
 import { useDocumentTitle } from "../../../hooks/useDocumentTitle";
 
+
+import logger from "../../../utils/logger";
 
 const TutorInterviewsList = () => {
   useDocumentTitle("Tutor Interviews List");
@@ -23,7 +25,7 @@ const TutorInterviewsList = () => {
           setSessions(result.data?.sessions || []);
         }
       } catch (err) {
-        console.error(err);
+        logger.error(err);
       } finally {
         setLoading(false);
       }
