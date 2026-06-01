@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useToast, ErrorState, PageHeader } from "../../../shared/components";
-import Navbar from "../../../shared/landing/Navbar";
+import Navbar from "../../../shared/components/Navbar";
 import Footer from "../../../modules/landing/components/Footer";
 
 import AnalysisResult from "../components/AnalysisResult";

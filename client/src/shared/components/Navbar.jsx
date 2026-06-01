@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Home,
   FileText,
@@ -10,13 +10,14 @@ import {
   X,
   Menu,
 } from "lucide-react";
-import Button from "../landing/Button";
+import Button from "./Button";
 import NotificationBell from "../../modules/notifications/components/NotificationBell";
 import { useTheme } from "../contexts/ThemeContext";
 const Navbar = ({ isAuthenticated = false, user = null }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -119,7 +120,7 @@ const Navbar = ({ isAuthenticated = false, user = null }) => {
               <span className={`text-sm font-medium ${topLevelTextClass}`}>
                 Hi, {user?.name || "User"}
               </span>
-              <Button variant="secondary" size="sm" to="/dashboard">
+              <Button variant="secondary" size="sm" onClick={() => navigate("/dashboard")}>
                 Account
               </Button>
             </div>
@@ -133,7 +134,7 @@ const Navbar = ({ isAuthenticated = false, user = null }) => {
               >
                 Login
               </Button>
-              <Button variant="primary" size="sm" to="/register">
+              <Button variant="primary" size="sm" onClick={() => navigate("/register")}>
                 Get Started
               </Button>
             </>
@@ -220,7 +221,10 @@ const Navbar = ({ isAuthenticated = false, user = null }) => {
               <Button
                 variant="primary"
                 size="lg"
-                to="/dashboard"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  navigate("/dashboard");
+                }}
                 className="w-full justify-center"
               >
                 Go to Dashboard
@@ -230,7 +234,10 @@ const Navbar = ({ isAuthenticated = false, user = null }) => {
                 <Button
                   variant="secondary"
                   size="lg"
-                  to="/login"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    navigate("/login");
+                  }}
                   className="w-full justify-center !text-slate-900 dark:!text-white"
                 >
                   <LogIn size={20} /> Login
@@ -238,7 +245,10 @@ const Navbar = ({ isAuthenticated = false, user = null }) => {
                 <Button
                   variant="primary"
                   size="lg"
-                  to="/register"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    navigate("/register");
+                  }}
                   className="w-full justify-center"
                 >
                   <UserPlus size={20} /> Get Started

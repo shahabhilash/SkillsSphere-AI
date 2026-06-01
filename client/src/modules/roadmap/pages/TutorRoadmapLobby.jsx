@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { 
   Award, BookOpen, CheckCircle2, Plus, Target, ExternalLink, Video, FileText, Globe, User, ArrowLeft, ArrowRight, MessageSquare
 } from "lucide-react";
-import Navbar from "../../../shared/landing/Navbar";
+import Navbar from "../../../shared/components/Navbar";
 import Footer from "../../../modules/landing/components/Footer";
 
 import { 
