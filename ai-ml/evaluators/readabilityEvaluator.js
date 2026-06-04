@@ -42,12 +42,6 @@ export default function readabilityEvaluator({ resumeText = "" }) {
     return "low";
   }
 
-  function buildRewriteSuggestion(cleanedSentence, relevantVerbsForSuggestion) {
-    const verb = relevantVerbsForSuggestion[Math.floor(Math.random() * Math.min(5, relevantVerbsForSuggestion.length))] ?? "Led";
-    const trimmed = cleanedSentence.replace(/^(responsible for|worked on|tasks included|helped|assisted)/i, "").trim();
-    return `${verb} ${trimmed.charAt(0).toLowerCase()}${trimmed.slice(1)}`;
-  }
-
   const sentences = resumeText
     .split(/[.!?\n]/)
     .map(s => s.trim())
@@ -120,6 +114,7 @@ export default function readabilityEvaluator({ resumeText = "" }) {
   if (highSeverity.length > 0) {
     suggestions.push(
       `${highSeverity.length} high-severity weak bullets detected. Example rewrite: "${highSeverity[0].suggestedRewrite}"`
+      `${highSeverity.length} high-severity weak bullets detected (e.g., 'Responsible for...').`
     );
   }
 
