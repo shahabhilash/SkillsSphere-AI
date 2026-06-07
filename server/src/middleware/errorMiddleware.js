@@ -8,23 +8,74 @@ const handleCastErrorDB = (err) => {
 };
 
 const handleDuplicateFieldsDB = (err) => {
-  const raw = err.errmsg || err.message || "";
-  const match = raw.match(/(["'])(\\?.)*?\1/);
-  const value = match ? match[0] : "unknown";
+  // MongoDB duplicate key errors usually look like:
+  // - err.code === 11000
+  // - message includes: "dup key: { <field>: \"<value>\" }"
+  // - and may also include: err.keyValue === { <field>: <value> }
+
+  // Preferred: keyValue (works regardless of MongoDB version / message format)
+  if (err?.keyValue && typeof err.keyValue === "object") {
+    const keys = Object.keys(err.keyValue);
+    if (keys.length > 0) {
+      const firstKey = keys[0];
+      const rawValue = err.keyValue[firstKey];
+      const value =
+        rawValue === null || rawValue === undefined
+          ? "unknown"
+          : String(rawValue).replace(/^['"]|['"]$/g, "");
+
+      const message = `Duplicate field value: ${value}. Please use another value!`;
+      return new AppError(message, 400);
+    }
+  }
+
+  // Fallback: parse message "dup key: { ...: \"VALUE\" }"
+  const raw = err?.errmsg || err?.message || "";
+
+  // Capture either a quoted string or a number-like value inside the dup key object.
+  // Example: dup key: { email: "a@b.com" }
+  const match = raw.match(/dup key:\s*\{[^}]*:\s*(?:"([^"]*)"|'([^']*)'|([^\s}]+))\s*\}/i);
+
+  const value = match
+    ? String(match[1] || match[2] || match[3] || "unknown").trim()
+    : "unknown";
+
   const message = `Duplicate field value: ${value}. Please use another value!`;
   return new AppError(message, 400);
 };
 
 const handleValidationErrorDB = (err) => {
-  // Build field-level errors object for frontend consumption
+  // Build field-level errors object for frontend consumption.
+  // Hardened: Mongoose ValidationError should have `err.errors`,
+  // but some callers/mocked errors may pass it as undefined or non-object.
+  const rawErrors = err?.errors;
+
+  if (!rawErrors || typeof rawErrors !== "object") {
+    const message = "Invalid input data.";
+    const error = new AppError(message, 400);
+    error.errors = {};
+    return error;
+  }
+
   const errors = {};
-  Object.keys(err.errors).forEach((key) => {
-    errors[key] = err.errors[key].message;
+  Object.keys(rawErrors).forEach((key) => {
+    const fieldErr = rawErrors[key];
+    errors[key] = fieldErr?.message || "Invalid value";
   });
-  
-  const messages = Object.values(err.errors).map((el) => el.message);
-  const message = `Invalid input data. ${messages.join(". ")}`;
-  
+
+  const messages = Object.values(rawErrors)
+    .map((el) => el?.message)
+    .filter((m) => typeof m === "string" && m.trim().length > 0)
+    .map((m) => m.trim())
+    // Normalize punctuation to avoid odd sequences like "...invalid.. other".
+    // Keep the join delimiter consistent instead.
+    .map((m) => m.replace(/[.!?]+\s*$/u, ""));
+
+  const message = messages.length
+    ? `Invalid input data. ${messages.join(". ")}.`
+    : "Invalid input data.";
+
+
   const error = new AppError(message, 400);
   error.errors = errors; // Attach field-level errors
   return error;
@@ -34,19 +85,96 @@ const handleAIError = (err) => {
   let message = "AI service is currently unavailable. Please try again later.";
   let statusCode = 503;
 
-  if (err.status === 401) {
+  const status = typeof err?.status === "number" ? err.status : undefined;
+  const code = typeof err?.code === "string" ? err.code : undefined;
+  const rawMessage = typeof err?.message === "string" ? err.message : "";
+  const text = rawMessage.toLowerCase();
+
+  // Common HTTP status equivalents (work for Axios/OpenAI-like errors,
+  // and also for Gemini errors that include status).
+  if (status === 401) {
     message = "AI Authentication failed. Please check system configuration.";
-    statusCode = 500;
-  } else if (err.status === 429) {
+    statusCode = 401;
+  } else if (status === 403) {
+    message = "AI access forbidden. Please check permissions/configuration.";
+    statusCode = 403;
+  } else if (status === 429) {
     message = "AI Rate limit exceeded. Please wait a moment.";
     statusCode = 429;
-  } else if (err.code === 'ETIMEDOUT' || err.status === 408) {
-    message = "AI Analysis timed out. Please try a shorter resume or retry.";
+  } else if (status === 408) {
+    message = "AI request timed out. Please retry.";
     statusCode = 408;
+  }
+
+  // Network/transport timeouts
+  if (code === "ETIMEDOUT") {
+    message = "AI request timed out. Please retry.";
+    statusCode = 408;
+  }
+
+  // Gemini / Google Generative AI heuristics (error shapes vary by failure mode)
+  // Try best-effort mapping based on message content.
+  if (text) {
+    if (
+      text.includes("quota") ||
+      text.includes("rate limit") ||
+      text.includes("too many requests") ||
+      text.includes("resource exhausted")
+    ) {
+      message = "AI quota/rate limit exceeded. Please wait a moment and retry.";
+      statusCode = 429;
+    } else if (
+      text.includes("invalid argument") ||
+      text.includes("invalid request") ||
+      text.includes("bad request")
+    ) {
+      message = "AI request was invalid. Please adjust the input and retry.";
+      statusCode = 400;
+    } else if (
+      text.includes("unauthorized") ||
+      text.includes("authentication") ||
+      text.includes("invalid api key")
+    ) {
+      message = "AI Authentication failed. Please check system configuration.";
+      statusCode = 401;
+    } else if (
+      text.includes("permission") ||
+      text.includes("forbidden") ||
+      text.includes("access denied")
+    ) {
+      message = "AI access forbidden. Please check permissions/configuration.";
+      statusCode = 403;
+    } else if (
+      text.includes("deadline") ||
+      text.includes("timeout") ||
+      text.includes("timed out") ||
+      text.includes("temporarily unavailable")
+    ) {
+      message = "AI request timed out. Please retry.";
+      statusCode = 408;
+    } else if (text.includes("not configured") || text.includes("unconfigured")) {
+      message = "AI service is currently unconfigured. Please set GEMINI_API_KEY in .env.";
+      statusCode = 503;
+    }
+  }
+
+  // Fallbacks by error code if present
+  if (!text) {
+    if (code === "400" || code === "INVALID_ARGUMENT") {
+      message = "AI request was invalid. Please adjust the input and retry.";
+      statusCode = 400;
+    } else if (code === "401" || code === "UNAUTHENTICATED") {
+      message = "AI Authentication failed. Please check system configuration.";
+      statusCode = 401;
+    } else if (code === "403" || code === "PERMISSION_DENIED") {
+      message = "AI access forbidden. Please check permissions/configuration.";
+      statusCode = 403;
+    }
   }
 
   return new AppError(message, statusCode);
 };
+
 
 const globalErrorHandler = (err, req, res, next) => {
   let error = Object.assign(err);
@@ -56,17 +184,73 @@ const globalErrorHandler = (err, req, res, next) => {
   if (error.code === 11000) error = handleDuplicateFieldsDB(error);
   if (error.name === "ValidationError") error = handleValidationErrorDB(error);
   
-  // Handle AI/OpenAI Errors
-  if (error.isAxiosError || error.type === 'invalid_request_error') {
+  // Handle AI errors (Gemini/Google Generative AI + AI-specific Axios errors)
+  // IMPORTANT: Do NOT classify AI errors solely by message text (e.g. "google"),
+  // otherwise non-AI operational errors containing these words get misclassified.
+  //
+  // IMPORTANT FIX: Do NOT classify all Axios errors as AI.
+  // `error.isAxiosError === true` can be true for operational failures to non-AI upstream services.
+  const url = typeof error?.config?.url === "string" ? error.config.url : "";
+  const aiUrlHints = [
+    // Google / Gemini endpoints (best-effort allowlist)
+    "generativelanguage.googleapis.com",
+    "googleapis.com",
+    "/v1beta/models",
+    "/v1/models",
+    // Some SDKs/clients may use a custom base URL that still includes these hints.
+    "gemini",
+    "generative",
+    // OpenAI (if used elsewhere in the app)
+    "api.openai.com",
+    "chat/completions",
+    "responses",
+  ];
+  const isAiAxiosError = Boolean(
+    error.isAxiosError &&
+      (aiUrlHints.some((hint) => url.toLowerCase().includes(hint)) ||
+        // Secondary check: provider header / type hints if present.
+        (typeof error?.config?.headers === "object" &&
+          (Object.values(error.config.headers)
+            .filter((v) => typeof v === "string")
+            .join(" ")
+            .toLowerCase()
+            .includes("google") ||
+            Object.values(error.config.headers)
+              .filter((v) => typeof v === "string")
+              .join(" ")
+              .toLowerCase()
+              .includes("gemini"))))
+  );
+
+  if (
+    isAiAxiosError ||
+    error.type === "invalid_request_error" ||
+    error?.name === "GoogleGenerativeAI" ||
+    error?.provider === "google" ||
+    (typeof error?.status === "number" &&
+      // Gate status-based heuristics behind known AI/provider identifiers.
+      (error?.name === "GoogleGenerativeAI" || error?.provider === "google"))
+  ) {
     error = handleAIError(error);
   }
+
+
   
-  // Preserve field-level errors from Mongoose if present
-  if (err.errors && !error.errors) {
-    error.errors = {};
-    Object.keys(err.errors).forEach((key) => {
-      error.errors[key] = err.errors[key].message;
-    });
+  // Preserve field-level errors from Mongoose if present (deterministic)
+  // Prefer any field-level errors already attached to `error`, but fall back
+  // to the original mongoose `err.errors` when missing or empty.
+  if (err?.errors) {
+    const hasExistingErrors =
+      error?.errors &&
+      typeof error.errors === "object" &&
+      Object.keys(error.errors).length > 0;
+
+    if (!hasExistingErrors) {
+      error.errors = {};
+      Object.keys(err.errors).forEach((key) => {
+        error.errors[key] = err.errors[key].message;
+      });
+    }
   }
 
   error.statusCode = error.statusCode || 500;
@@ -86,17 +270,26 @@ const globalErrorHandler = (err, req, res, next) => {
       res.status(error.statusCode).json({
         success: false,
         status: error.status,
+        statusCode: error.statusCode,
         message: error.message,
         errors: error.errors || {}, // Include field-level errors if available
       });
     } else {
       logger.error("ERROR 💥", error);
-      res.status(500).json({
+
+      // Standardize non-operational error payload shape for frontend reliability.
+      // Frontend may expect `errors` and `statusCode` consistently.
+      const statusCode = 500;
+
+      res.status(statusCode).json({
         success: false,
         status: "error",
+        statusCode,
         message: "Something went very wrong!",
+        errors: {},
       });
     }
+
   }
 };
 

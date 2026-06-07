@@ -2,6 +2,7 @@ import JobPosting from "../../database/models/JobPosting.js";
 import {
   getAllJobs,
   getJobRecommendations,
+  getRankedCandidatesForJob,
   getRecruiterAnalytics as getAnalyticsData,
   applyToJob as applyToJobService,
   getJobApplications as getJobAppsService,
@@ -13,6 +14,7 @@ import {
   deleteJob as deleteJobService,
   getSkillTrends as getSkillTrendsService,
   updateApplicationStatus as updateApplicationStatusService,
+  updateStudentApplicationStatusService,
 } from "./service.js";
 import AppError from "../../utils/AppError.js";
 import asyncHandler from "../../utils/asyncHandler.js";
@@ -189,6 +191,7 @@ export const getJobPostingById = asyncHandler(async (req, res) => {
  */
 export const updateJobPosting = asyncHandler(async (req, res) => {
   const updatedJob = await updateJobService(req.params.id, req.body, req.user._id);
+  await invalidateCacheByPrefix("jobs");
   await invalidateAnalyticsCache(req.user._id.toString());
   res.status(200).json({
     success: true,
@@ -203,6 +206,7 @@ export const updateJobPosting = asyncHandler(async (req, res) => {
  */
 export const deleteJobPosting = asyncHandler(async (req, res) => {
   await deleteJobService(req.params.id, req.user._id);
+  await invalidateCacheByPrefix("jobs");
   await invalidateAnalyticsCache(req.user._id.toString());
   res.status(200).json({
     success: true,
@@ -245,7 +249,8 @@ export const getJobs = asyncHandler(async (req, res) => {
  * @access  Private (Students only)
  */
 export const getRecommendations = asyncHandler(async (req, res) => {
-  const recommendations = await getJobRecommendations(req.user);
+  const { sortBy, limit } = req.query;
+  const recommendations = await getJobRecommendations(req.user, { sortBy, limit });
   res.status(200).json(recommendations);
 });
 
@@ -296,6 +301,10 @@ export const applyToJobPosting = asyncHandler(async (req, res) => {
  * @access  Private (Recruiters only)
  */
 export const getApplications = asyncHandler(async (req, res) => {
+  if (req.query.view === "insights") {
+    return getRankedCandidates(req, res);
+  }
+
   const result = await getJobAppsService(req.params.id, req.user._id, {
     ...req.query,
     page: Math.max(1, parseInt(req.query.page) || 1),
@@ -309,6 +318,20 @@ export const getApplications = asyncHandler(async (req, res) => {
     totalPages: result.totalPages,
     currentPage: result.currentPage,
     applications: result.applications,
+  });
+});
+
+export const getRankedCandidates = asyncHandler(async (req, res) => {
+  const result = await getRankedCandidatesForJob(req.params.id, req.user._id, req.query);
+
+  return res.status(200).json({
+    success: true,
+    job: result.job,
+    candidates: result.candidates,
+    totalCount: result.totalCount,
+    totalPages: result.totalPages,
+    currentPage: result.currentPage,
+    summary: result.summary,
   });
 });
 
@@ -457,6 +480,31 @@ export const updateApplicationStatus = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: `Application status updated to ${status}`,
+    application,
+  });
+});
+
+/**
+ * @desc    Update the student's personal CRM status for a job application
+ * @route   PATCH /api/jobs/applications/:id/student-status
+ * @access  Private (Students only)
+ */
+export const updateStudentApplicationStatus = asyncHandler(async (req, res) => {
+  const { studentStatus } = req.body;
+
+  if (studentStatus === undefined) {
+    throw new AppError("studentStatus is required", 400);
+  }
+
+  const application = await updateStudentApplicationStatusService(
+    req.params.id,
+    req.user._id,
+    studentStatus
+  );
+
+  res.status(200).json({
+    success: true,
+    message: `Student tracking status updated`,
     application,
   });
 });

@@ -21,7 +21,7 @@ import { logEvaluatorConfig } from "./src/config/evaluatorConfig.js";
 import redisClient, { connectRedis } from "./src/config/redis.js";
 // import swaggerSpec from "./src/config/swaggerConfig.js";
 import connectDB, { isConnected } from "./src/database/db.js";
-import { verifySocketToken } from "./src/middleware/authMiddleware.js";
+import { protect, verifySocketToken } from "./src/middleware/authMiddleware.js";
 import globalErrorHandler from "./src/middleware/errorMiddleware.js";
 import { globalLimiter } from "./src/middleware/rateLimiter.js";
 import requireDB from "./src/middleware/requireDB.js";
@@ -32,6 +32,7 @@ import {
 } from "./src/middleware/socketAuthError.js";
 import analyticsRoutes from "./src/modules/analytics/routes.js";
 import authRoutes from "./src/modules/auth/routes.js";
+import createChatRouter from "./src/modules/chat/routes.js";
 import classroomRoutes from "./src/modules/classrooms/routes.js";
 import { initClassroomSockets } from "./src/modules/classrooms/socket.js";
 import coverLetterRoutes from "./src/modules/coverLetters/routes.js";
@@ -49,7 +50,9 @@ import resumeRoutes from "./src/modules/resumes/routes.js";
 import roadmapRoutes from "./src/modules/roadmap/routes.js";
 import { initRoadmapSockets } from "./src/modules/roadmap/socket.js";
 import userRoutes from "./src/modules/users/routes.js";
+import aiAssistantRoutes from "./src/modules/ai-assistant/routes.js";
 import { setIO } from "./src/utils/socketIO.js";
+
 import attachSocketRateLimiter from "./src/middleware/socketRateLimiter.js";
 
 const app = express();
@@ -93,22 +96,33 @@ io.use(async (socket, next) => {
     socket.user = await verifySocketToken(token);
     next();
   } catch (err) {
-    const message = getSocketAuthErrorMessage(err, "Invalid auth token");
-    const errorCode =
-      message === "Missing auth token"
-        ? SOCKET_AUTH_ERROR_CODES.missingToken
-        : SOCKET_AUTH_ERROR_CODES.invalidToken;
+    // Harden unexpected thrown values (non-Error, Error without message, etc.)
+    // so socket auth failure always returns a safe payload.
+    const safeMessage =
+      err instanceof Error
+        ? typeof err.message === "string" && err.message.trim()
+          ? err.message.trim()
+          : "Invalid auth token"
+        : typeof err === "string" && err.trim()
+          ? err.trim()
+          : "Invalid auth token";
+
+    // Decide error code deterministically.
+    // The "missingToken" case should be handled earlier when token is falsy.
+    // Any thrown/failed verification is treated as invalidToken.
+    const errorCode = SOCKET_AUTH_ERROR_CODES.invalidToken;
 
     next(
       createSocketAuthError(
-        message === "Missing auth token"
-          ? message
-          : `Socket authentication failed: ${message}`,
+        safeMessage === "Invalid auth token"
+          ? safeMessage
+          : `Socket authentication failed: ${safeMessage}`,
         errorCode,
       ),
     );
   }
 });
+
 
 setIO(io);
 // Attach per-socket rate limiter to protect against message floods
@@ -133,24 +147,59 @@ app.use((req, res, next) => {
 // Apply global rate limiting to all /api routes
 app.use("/api", globalLimiter);
 
-await connectDB();
-await connectRedis();
-logEvaluatorConfig();
-
-// Initialize Gemini AI client once at startup (not per-request)
-let geminiModel = null;
-if (process.env.GEMINI_API_KEY) {
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+// Safe startup: MongoDB/Redis may be temporarily unavailable.
+// Keep server running in degraded mode instead of crashing the process.
+let didConnectRedis = false;
+try {
+  await connectDB();
+  
+  // Clear ghost sockets from active classroom sessions on server startup to prevent WebRTC continuity issues
+  const ClassroomSession = (await import("./src/database/models/ClassroomSession.js")).default;
+  const resetResult = await ClassroomSession.updateMany(
+    { status: "active" },
+    { $set: { participants: [] } }
+  );
+  if (resetResult.modifiedCount > 0) {
+    logger.log(`Cleared ghost participants from ${resetResult.modifiedCount} active classroom(s)`);
+  }
+} catch (err) {
+  logger.error(
+    "MongoDB startup error (degraded mode):",
+    err instanceof Error ? err.message : err,
+  );
 }
 
+try {
+  await connectRedis();
+  didConnectRedis = true;
+} catch (err) {
+  logger.error(
+    "Redis startup error (degraded mode):",
+    err instanceof Error ? err.message : err,
+  );
+}
+
+// Expose a simple readiness signal for /health without relying on redisClient internals.
+globalThis.__REDIS_READY__ = didConnectRedis;
+
+logEvaluatorConfig();
+
+
+
+// Initialize Gemini AI client logic moved to src/modules/ai-assistant/controller.js
+
 app.get("/health", (req, res) => {
-  res.json({ status: "OK", db: isConnected ? "connected" : "disconnected" });
+  res.json({
+    status: "OK",
+    db: isConnected ? "connected" : "disconnected",
+    redis: globalThis.__REDIS_READY__ ? "connected" : "disconnected",
+
+  });
 });
 
 // app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-app.post("/api/chat", async (req, res) => {
+app.post("/api/chat", protect, async (req, res) => {
   try {
     const { message } = req.body;
     if (!message) {
@@ -174,9 +223,10 @@ User message: ${message}`;
     res.json({ reply });
   } catch (error) {
     logger.error("Chat API error:", error);
-    res.status(500).json({ error: "Failed to generate AI response" });
+    next(error);
   }
 });
+
 
 app.use("/api/auth", requireDB, authRoutes);
 app.use("/api/resume", requireDB, resumeRoutes);
@@ -193,6 +243,7 @@ app.use("/api/files", requireDB, fileRoutes);
 app.use("/api/notifications", requireDB, notificationRoutes);
 app.use("/api/analytics", requireDB, analyticsRoutes);
 app.use("/api/recruiter", requireDB, recruiterRoutes);
+app.use("/api/chat", requireDB, aiAssistantRoutes);
 
 initClassroomSockets(io);
 initNotificationSockets(io);
@@ -202,10 +253,23 @@ initRoadmapSockets(io);
 // Catch-all 404 handler for API routes
 // This prevents Express from returning HTML on missing routes, which crashes frontend JSON parsers.
 app.use("/api/*", (req, res) => {
-  res.status(404).json({ success: false, message: `API route not found: ${req.method} ${req.originalUrl}` });
+  res.status(404).json({
+    success: false,
+    message: `API route not found: ${req.method} ${req.originalUrl}`,
+  });
+});
+
+// Global 404 JSON handler for non-API routes.
+// Prevents Express from returning HTML for unknown routes which may break JSON-based frontend calls.
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.method} ${req.originalUrl}`,
+  });
 });
 
 app.use(globalErrorHandler);
+
 
 server.listen(PORT, () => {
   logger.log(`Server running on http://localhost:${PORT}`);

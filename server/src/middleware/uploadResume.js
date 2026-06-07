@@ -5,6 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { validateResumeBufferSignatureSync } from "../utils/validateFileSignature.js";
 import asyncHandler from "../utils/asyncHandler.js";
+import logger from "../utils/logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,8 +49,8 @@ export const fileFilter = (_req, file, cb) => {
     return cb(traversalError, false);
   }
 
-  // Verify extension is allowed (mimetype check is performed as content validation downstream)
-  if (hasAllowedExtension) {
+  // Verify both extension and MIME type map correctly
+  if (hasAllowedExtension && hasAllowedMimeType) {
     cb(null, true);
   } else {
     const typeError = new Error("Only PDF, DOC, DOCX, and TXT files are allowed");
@@ -83,7 +84,7 @@ export const removeUploadedFile = async (filePath) => {
   } catch (error) {
     // Best-effort cleanup after rejected upload
     // Failing silently here is acceptable to prevent crashing the worker
-    console.warn(`[Cleanup Warning] Failed to delete file at ${filePath}:`, error.message);
+    logger.warn(`[Cleanup Warning] Failed to delete file at ${filePath}: ${error.message}`);
   }
 };
 
@@ -159,7 +160,7 @@ const handleMulterError = (error, res) => {
 
   // Handle generic unknown errors
   if (error) {
-    console.error("[Upload Error] Unexpected multer error:", error);
+    logger.error(`[Upload Error] Unexpected multer error: ${error.message}`);
     return res.status(500).json({
       success: false,
       message: "Internal server error occurred while processing the upload.",
@@ -204,7 +205,7 @@ export const validateAndPersistResumeFile = asyncHandler(async (req, res, next) 
     // Clear the memory reference to aid Garbage Collection
     req.file = undefined; 
     
-    return res.status(400).json({
+    return res.status(415).json({
       success: false,
       message: signatureCheck.message || "The uploaded file failed content validation. Please upload a genuine PDF, DOC, DOCX, or TXT file.",
     });

@@ -5,10 +5,16 @@ import { useToast } from "../../../shared/components/toast/ToastProvider";
 
 import logger from "../../../utils/logger";
 
-export default function SharedCodeEditor({ socket, roomId, userRole }) {
+export default function SharedCodeEditor({ socket, roomId, userRole, initialCode }) {
   const { success } = useToast();
-  const [code, setCode] = useState(`// Welcome to SkillSphere AI Live Coding Classroom!\n// Type your collaborative code here...\n\nfunction helloWorld() {\n  logger.log("Welcome to class!");\n}`);
+  const [code, setCode] = useState(initialCode || `// Welcome to SkillSphere AI Live Coding Classroom!\n// Type your collaborative code here...\n\nfunction helloWorld() {\n  logger.log("Welcome to class!");\n}`);
   const [language, setLanguage] = useState("javascript");
+
+  useEffect(() => {
+    if (initialCode) {
+      setCode(initialCode);
+    }
+  }, [initialCode]);
   const [lastEditorInfo, setLastEditorInfo] = useState("");
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionResult, setExecutionResult] = useState(null); // { output, isError, senderName }
@@ -145,7 +151,7 @@ export default function SharedCodeEditor({ socket, roomId, userRole }) {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-[#0b0f19] rounded-2xl overflow-hidden border border-slate-800 h-full relative">
+    <div className="w-full h-full flex flex-col bg-[#0b0f19] rounded-2xl overflow-hidden border border-slate-800 relative shadow-2xl">
       {/* Editor Header / Controls */}
       <div className="bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between z-10 flex-wrap gap-3">
         <div className="flex items-center space-x-2 text-indigo-400">
@@ -199,7 +205,7 @@ export default function SharedCodeEditor({ socket, roomId, userRole }) {
       </div>
 
       {/* Monaco Editor Container */}
-      <div className="flex-1 min-h-[400px] h-full relative">
+      <div className="flex-1 w-full relative min-h-0">
         <Editor
           height="100%"
           language={language}

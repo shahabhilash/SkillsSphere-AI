@@ -41,6 +41,11 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    isOnboarded: {
+      type: Boolean,
+      default: false,
+    },
+
     profilePicPublicId: {
       type: String,
       default: null,
@@ -60,6 +65,7 @@ const userSchema = new mongoose.Schema(
     verificationTokenExpires: { type: Date, default: null },
     resetPasswordToken: { type: String, default: null },
     resetPasswordExpires: { type: Date, default: null },
+    passwordChangedAt: { type: Date, default: null },
 
     otpAttempts: {
       type: Number,
@@ -109,7 +115,7 @@ const userSchema = new mongoose.Schema(
 );
 
 // Intercept queries on email to transparently encrypt them so exact matches still work
-userSchema.pre(["find", "findOne", "countDocuments", "findOneAndUpdate", "updateOne"], function (next) {
+userSchema.pre(["find", "findOne", "countDocuments", "findOneAndUpdate", "updateOne"], function () {
   const query = this.getQuery();
   if (query && query.email) {
     if (typeof query.email === "string" && !query.email.startsWith("v1:cbc:")) {
@@ -120,7 +126,6 @@ userSchema.pre(["find", "findOne", "countDocuments", "findOneAndUpdate", "update
       );
     }
   }
-  next();
 });
 
 const User = mongoose.model("User", userSchema);

@@ -2,7 +2,10 @@ import { useState, useRef, useEffect } from "react";
 import { useSelector } from "react-redux";
 import { X, Send, Sparkles } from "lucide-react";
 import MessageBubble from "./MessageBubble";
-import { API_URL } from "../../../config/env";
+import { apiRequest } from "../../../services/apiClient";
+
+const TOKEN_KEY = "skillssphere.auth.token";
+const getToken = () => localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
 
 import logger from "../../../utils/logger";
 
@@ -26,22 +29,17 @@ const ChatBox = ({ onClose }) => {
     inputRef.current?.focus();
   }, []);
 
-  const sendMessageToBackend = async (message) => {
+  const sendMessageToBackend = async (history) => {
     try {
-      const headers = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const res = await fetch(`${API_URL}/api/chat`, {
+      const data = await apiRequest("/api/chat", {
         method: "POST",
-        headers,
-        body: JSON.stringify({ message }),
+        body: { message },
+        token: getToken(),
       });
-
-      const data = await res.json();
       return data.reply;
     } catch (error) {
       logger.error(error);
-      return "Sorry, I couldn't process that. Please try again.";
+      return "Sorry, I couldn't process that. Please try again or check your internet connection.";
     }
   };
 
@@ -49,14 +47,15 @@ const ChatBox = ({ onClose }) => {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
 
-    setMessages((prev) => [...prev, { sender: "user", text: trimmed }]);
+    const newMessages = [...messages, { sender: "user", text: trimmed }];
+    setMessages(newMessages);
     setInput("");
     setIsLoading(true);
 
     // Show typing indicator
     setMessages((prev) => [...prev, { sender: "bot", text: "Thinking..." }]);
 
-    const reply = await sendMessageToBackend(trimmed);
+    const reply = await sendMessageToBackend(newMessages);
 
     // Replace typing indicator with actual reply
     setMessages((prev) => [...prev.slice(0, -1), { sender: "bot", text: reply }]);

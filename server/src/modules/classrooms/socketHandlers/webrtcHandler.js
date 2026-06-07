@@ -1,19 +1,34 @@
 export default function registerWebRTCHandler(io, socket) {
-  // WebRTC Signaling Events - Offer
-  socket.on("webrtc-offer", ({ targetSocketId, offer }) => {
-    // Validate that the requesting socket is in a room
-    if (!socket.data || !socket.data.roomId) {
+  const getAuthorizedRoomId = () => socket.data?.roomId;
+
+  const getSameRoomTargetSocket = (targetSocketId) => {
+    const roomId = getAuthorizedRoomId();
+    if (!roomId) {
+      socket.emit("unauthorized", { message: "You must join a room first" });
+      return null;
+    }
+
+    const targetSocket = io.sockets.sockets.get(targetSocketId);
+    if (!targetSocket || targetSocket.data?.roomId !== roomId) {
+      return null;
+    }
+
+    return targetSocket;
+  };
+
+  const emitToAuthorizedRoom = (event, payload) => {
+    const roomId = getAuthorizedRoomId();
+    if (!roomId) {
       socket.emit("unauthorized", { message: "You must join a room first" });
       return;
     }
 
-    // Validate that the target socket exists and is in the same room
-    const targetSocket = io.sockets.sockets.get(targetSocketId);
-    if (
-      !targetSocket ||
-      !targetSocket.data ||
-      targetSocket.data.roomId !== socket.data.roomId
-    ) {
+    socket.to(roomId).emit(event, payload);
+  };
+
+  // WebRTC Signaling Events - Offer
+  socket.on("webrtc-offer", ({ targetSocketId, offer }) => {
+    if (!getSameRoomTargetSocket(targetSocketId)) {
       // Gracefully drop unauthorized stream injection attempts
       return;
     }
@@ -27,18 +42,7 @@ export default function registerWebRTCHandler(io, socket) {
 
   // WebRTC Signaling Events - Answer
   socket.on("webrtc-answer", ({ targetSocketId, answer }) => {
-    // Validate that both sockets exist and are in the same room
-    if (!socket.data || !socket.data.roomId) {
-      socket.emit("unauthorized", { message: "You must join a room first" });
-      return;
-    }
-
-    const targetSocket = io.sockets.sockets.get(targetSocketId);
-    if (
-      !targetSocket ||
-      !targetSocket.data ||
-      targetSocket.data.roomId !== socket.data.roomId
-    ) {
+    if (!getSameRoomTargetSocket(targetSocketId)) {
       // Gracefully drop unauthorized stream signaling answers
       return;
     }
@@ -47,5 +51,51 @@ export default function registerWebRTCHandler(io, socket) {
       answererSocketId: socket.id,
       answer,
     });
+  });
+
+  // WebRTC Signaling Events - ICE Candidate
+  socket.on("ice-candidate", ({ targetSocketId, candidate }) => {
+    if (!getSameRoomTargetSocket(targetSocketId)) {
+      // Gracefully drop unauthorized ICE candidate injection attempts
+      return;
+    }
+
+    socket.to(targetSocketId).emit("ice-candidate", {
+      senderSocketId: socket.id,
+      candidate,
+    });
+  });
+
+  // WebRTC call presence
+  socket.on("user-joined-call", () => {
+    emitToAuthorizedRoom("user-joined-call", {
+      socketId: socket.id,
+      user: socket.data?.user,
+    });
+  });
+
+  socket.on("user-left-call", () => {
+    emitToAuthorizedRoom("user-left-call", {
+      socketId: socket.id,
+      user: socket.data?.user,
+    });
+  });
+
+  // Toggle Mute
+  socket.on("toggle-mute", ({ roomId, isMuted }) => {
+    if (!socket.data || socket.data.roomId !== roomId) return;
+    socket.to(roomId).emit("mute-toggled", { socketId: socket.id, isMuted });
+  });
+
+  // Toggle Video
+  socket.on("toggle-video", ({ roomId, isVideoOff }) => {
+    if (!socket.data || socket.data.roomId !== roomId) return;
+    socket.to(roomId).emit("video-toggled", { socketId: socket.id, isVideoOff });
+  });
+
+  // Toggle Screen Share
+  socket.on("toggle-screen-share", ({ roomId, isScreenSharing }) => {
+    if (!socket.data || socket.data.roomId !== roomId) return;
+    socket.to(roomId).emit("screen-share-toggled", { socketId: socket.id, isScreenSharing });
   });
 }

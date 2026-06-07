@@ -1,7 +1,7 @@
 import React from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useNavigate } from "react-router-dom";
-import { LogOut, Menu, User, FileText, Target, Briefcase, Video, BadgeCheck, Sparkles } from "lucide-react";
+import { LogOut, Menu, User, Users, FileText, Target, Briefcase, Video, BadgeCheck, Sparkles } from "lucide-react";
 
 import { logout } from "../../features/auth/authSlice";
 import Button from "../../shared/components/Button";
@@ -24,9 +24,9 @@ const getSidebarItems = (role) => {
   if (role === "tutor") {
     return [
       { label: "Analytics", icon: Target, to: "/tutor/analytics" },
-      { label: "Roadmaps", icon: FileText, to: "/tutor/roadmaps" },
-      { label: "Interviews", icon: Video, to: "/tutor/interviews" },
-      { label: "Classrooms", icon: Video, to: "/classrooms" },
+      { label: "Student's Roadmap", icon: FileText, to: "/tutor/roadmaps" },
+      { label: "Student's Interview", icon: Video, to: "/tutor/interviews" },
+      { label: "Classrooms", icon: Users, to: "/tutor/classrooms" },
     ];
   }
   if (role === "recruiter") {
@@ -38,10 +38,10 @@ const getSidebarItems = (role) => {
   }
   // Default to student
   return [
-    { label: "Update Resume", icon: FileText, to: "/resume-analyzer" },
-    { label: "Find Matches", icon: Target, to: "/job-matcher" },
-    { label: "Applied Jobs", icon: Briefcase, to: "/my-applications" },
-    { label: "Mock Interviews", icon: Video, to: "/mock-interview" },
+    { label: "Resume Analyzer", icon: FileText, to: "/resume-analyzer" },
+    { label: "Smart Job Matching", icon: Target, to: "/job-matcher" },
+    { label: "My Applications", icon: Briefcase, to: "/my-applications" },
+    { label: "Mock Interview", icon: Video, to: "/mock-interview" },
     { label: "Live Classrooms", icon: Video, to: "/classrooms" },
   ];
 };

@@ -32,6 +32,7 @@ export const createJob = async (jobData, recruiterId) => {
  * Get all published jobs with optional filtering
  * @param {Object} queryParams - Query filters (minSalary, maxSalary, designation, postedWithin)
  * @returns {Promise<Array>} - List of jobs
+
  */
 export const getAllJobs = async (queryParams = {}) => {
   const { minSalary, maxSalary, designation, postedWithin, page = 1, limit = 10 } = queryParams;
@@ -202,30 +203,127 @@ export const getSkillTrends = async () => {
  * @returns {Promise<void>}
  */
 export const deleteJob = async (id, recruiterId) => {
-  const job = await JobPosting.findById(id);
+  const client = mongoose.connection?.client;
+  const topologyType = client?.topology?.description?.type;
+  const useTransaction = topologyType && (
+    topologyType.includes("ReplicaSet") ||
+    topologyType === "Sharded" ||
+    (client?.topology?.description?.servers && client.topology.description.servers.size > 1)
+  );
 
-  if (!job) {
-    throw new AppError("Job not found", 404);
+  if (useTransaction) {
+    const dbSession = await mongoose.startSession();
+    dbSession.startTransaction();
+
+    try {
+      const job = await JobPosting.findById(id).session(dbSession);
+
+      if (!job) {
+        throw new AppError("Job not found", 404);
+      }
+
+      // Check if the recruiter owns this job
+      if (job.recruiter.toString() !== recruiterId.toString()) {
+        throw new AppError("You do not have permission to delete this job", 403);
+      }
+
+      // Delete all associated applications
+      const applications = await JobApplication.find({ job: id }).select("applicant");
+await JobApplication.deleteMany({ job: id });
+await JobPosting.findByIdAndDelete(id);
+
+const io = getIO();
+for (const app of applications) {
+  await Notification.create({
+    userId: app.applicant,
+    type: "application",
+    title: "Job Posting Removed",
+    message: `A job you applied to has been removed by the recruiter.`,
+    metadata: { jobId: id }
+  });
+  if (io) {
+    io.to(`user_${app.applicant}`).emit("new-notification", {});
   }
+}
 
-  // Check if the recruiter owns this job
-  if (job.recruiter.toString() !== recruiterId.toString()) {
-    throw new AppError("You do not have permission to delete this job", 403);
+      await dbSession.commitTransaction();
+    } catch (error) {
+      await dbSession.abortTransaction();
+      logger.error("Transaction aborted in deleteJob:", error);
+      throw error;
+    } finally {
+      dbSession.endSession();
+    }
+  } else {
+    const job = await JobPosting.findById(id);
+    if (!job) {
+      throw new AppError("Job not found", 404);
+    }
+    if (job.recruiter.toString() !== recruiterId.toString()) {
+      throw new AppError("You do not have permission to delete this job", 403);
+    }
+    const applications = await JobApplication.find({ job: id }).select("applicant");
+    await JobApplication.deleteMany({ job: id });
+    await JobPosting.findByIdAndDelete(id);
+
+    const io = getIO();
+    for (const app of applications) {
+      await Notification.create({
+        userId: app.applicant,
+        type: "application",
+        title: "Job Posting Removed",
+        message: `A job you applied to has been removed by the recruiter.`,
+        metadata: { jobId: id }
+      });
+      if (io) {
+        io.to(`user_${app.applicant}`).emit("new-notification", {});
+      }
+    }
   }
-
-  // Delete all associated applications
-  await JobApplication.deleteMany({ job: id });
-  
-  await JobPosting.findByIdAndDelete(id);
+};
+/**
+ * Helper to sort and limit recommendations in memory.
+ * @param {Array} jobs - List of recommendations with job details and matchScore
+ * @param {string} sortBy - Sort strategy ("score", "salary", "date")
+ * @param {number} limit - Number of items to return
+ * @returns {Array} Sorted and limited recommendations
+ */
+const sortAndLimitRecommendations = (jobs, sortBy, limit) => {
+  const sortedJobs = [...jobs];
+  if (sortBy === "salary") {
+    sortedJobs.sort((a, b) => {
+      const salaryA = a.salary?.max ?? 0;
+      const salaryB = b.salary?.max ?? 0;
+      return salaryB - salaryA;
+    });
+  } else if (sortBy === "date") {
+    sortedJobs.sort((a, b) => {
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA;
+    });
+  } else {
+    // Default/score: Sort by matchScore descending (highest first)
+    sortedJobs.sort((a, b) => {
+      const scoreA = a.matchScore ?? 0;
+      const scoreB = b.matchScore ?? 0;
+      return scoreB - scoreA;
+    });
+  }
+  return sortedJobs.slice(0, limit);
 };
 
 /**
  * Get personalized job recommendations for a student based on their resume.
  * 
  * @param {Object} user - The authenticated user object
+ * @param {Object} options - Query options (sortBy, limit)
  * @returns {Promise<Object>} Recommendations and status message
  */
-export const getJobRecommendations = async (user) => {
+export const getJobRecommendations = async (user, options = {}) => {
+  const { sortBy = "score", limit = 20 } = options;
+  const parsedLimit = Math.min(50, Math.max(1, parseInt(limit) || 20));
+
   // 1. Get the latest parsed resume for the user
   const resume = await resumeService.getLatestResume(user._id, true);
 
@@ -238,6 +336,35 @@ export const getJobRecommendations = async (user) => {
     };
   }
 
+  // 1.5. Check if we already have a valid MatchResult for this exact resume
+  const latestMatch = await matchingService.getLatestRecommendations(user._id);
+  
+  if (latestMatch && latestMatch.resume.toString() === resume._id.toString()) {
+    // If the match was generated less than 24 hours ago, use it directly
+    const ageInHours = (new Date() - new Date(latestMatch.createdAt)) / (1000 * 60 * 60);
+    if (ageInHours < 24) {
+      const jobsWithDetails = latestMatch.recommendations.map(rec => {
+        const jobDoc = rec.job; // populated
+        if (!jobDoc) return null;
+        return {
+          ...jobDoc,
+          matchScore: rec.score,
+          matchBreakdown: rec.breakdown,
+          relevanceInsights: rec.skillMatch?.feedback?.[0] || "Good match based on your background."
+        };
+      }).filter(Boolean);
+      
+      const sortedAndLimitedJobs = sortAndLimitRecommendations(jobsWithDetails, sortBy, parsedLimit);
+      
+      return {
+        success: true,
+        message: "Personalized matches found by SkillSphere AI",
+        jobs: sortedAndLimitedJobs,
+        hasResume: true
+      };
+    }
+  }
+
   // 2. Optimization: Pre-filter jobs to reduce load on the heavy AI engine
   const query = { status: "open" };
 
@@ -247,28 +374,42 @@ export const getJobRecommendations = async (user) => {
     ...(resume.keywords || []),
   ].map((term) => term.trim().toLowerCase()).filter(Boolean);
 
-  const uniqueTerms = [...new Set(candidateTerms)];
+  const uniqueTerms = [...new Set(candidateTerms)].slice(0, 30);
 
   if (uniqueTerms.length > 0) {
     // Pre-filter: Only fetch jobs where at least one skill or title matches a candidate term.
-    // This drastically reduces the number of jobs sent to the AI evaluator.
     const escapeRegex = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     
-    // We avoid \b for terms with special characters (like C++, Node.js) as it causes matching issues
-    const regexTerms = uniqueTerms.map((term) => {
-      const escaped = escapeRegex(term);
-      return new RegExp(`^${escaped}$|\\b${escaped}\\b`, "i");
-    });
+    // For exact match in arrays (highly optimized by MongoDB indexes)
+    const exactRegexTerms = uniqueTerms.map((term) => new RegExp(`^${escapeRegex(term)}$`, "i"));
+    // For substring match in title (prevents ReDoS from backtracking \b)
+    const substringRegexTerms = uniqueTerms.map((term) => new RegExp(escapeRegex(term), "i"));
     
     query.$or = [
-      { skills: { $in: regexTerms } },
-      { keywords: { $in: regexTerms } },
-      { title: { $in: regexTerms } }
+      { skills: { $in: exactRegexTerms } },
+      { keywords: { $in: exactRegexTerms } },
+      { title: { $in: substringRegexTerms } }
     ];
   }
 
+  // Configure MongoDB sorting
+  let dbSort = {};
+  if (sortBy === "salary") {
+    dbSort = { "salary.max": -1 };
+  } else if (sortBy === "date") {
+    dbSort = { createdAt: -1 };
+  }
+
   // Fetch only the relevant subset of jobs (limit to 100 at DB level)
-  const openJobs = await JobPosting.find(query).limit(100);
+  let openJobs = await JobPosting.find(query).sort(dbSort).limit(100);
+
+  // Fallback: If no jobs strictly match the skills/keywords, just fetch the latest 10 open jobs
+  // This ensures the AI always has something to evaluate and recommend
+  if (openJobs.length === 0) {
+    openJobs = await JobPosting.find({ status: "open" })
+      .sort(sortBy === "salary" ? { "salary.max": -1 } : { createdAt: -1 })
+      .limit(10);
+  }
 
   // 3. Perform matching and save result using matching service (ranks to top 20 and runs AI evaluation)
   const matchResult = await matchingService.evaluateMatches(user, resume, openJobs);
@@ -297,10 +438,12 @@ export const getJobRecommendations = async (user) => {
     };
   });
 
+  const sortedAndLimitedJobs = sortAndLimitRecommendations(jobsWithDetails, sortBy, parsedLimit);
+
   return {
     success: true,
     message: "Personalized matches found by SkillSphere AI",
-    jobs: jobsWithDetails,
+    jobs: sortedAndLimitedJobs,
     hasResume: true
   };
 };
@@ -506,6 +649,133 @@ export const applyToJob = async (jobId, applicantId, options = {}) => {
   });
 
   return application;
+};
+
+/**
+ * Get ranked candidates for a recruiter job insights page.
+ * @param {string} jobId - ID of the job
+ * @param {string} recruiterId - ID of the recruiter (for ownership check)
+ * @param {Object} filters - Optional ranking filters
+ * @returns {Promise<Object>} - Ranked candidates and job details
+ */
+export const getRankedCandidatesForJob = async (jobId, recruiterId, filters = {}) => {
+  const job = await JobPosting.findOne({
+    _id: jobId,
+    recruiter: recruiterId,
+  })
+    .populate("recruiter", "name email company companyWebsite")
+    .lean();
+
+  if (!job) {
+    throw new AppError("Job not found", 404);
+  }
+
+  const page = Math.max(1, parseInt(filters.page) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(filters.limit) || 8));
+  const skip = (page - 1) * limit;
+  const status = typeof filters.status === "string" ? filters.status.trim().toLowerCase() : "all";
+  const search = typeof filters.search === "string" ? filters.search.trim().toLowerCase() : "";
+  const minScore = filters.minScore !== undefined && filters.minScore !== "" ? Number(filters.minScore) : null;
+  const matchCategory = typeof filters.matchCategory === "string" ? filters.matchCategory.trim().toLowerCase() : "all";
+
+  const query = { job: job._id };
+
+  if (status && status !== "all") {
+    query.status = status;
+  }
+
+  if (minScore !== null && !Number.isNaN(minScore)) {
+    query.aiMatchScore = { ...query.aiMatchScore, $gte: minScore };
+  }
+
+  if (matchCategory && matchCategory !== "all") {
+    const categoryMap = {
+      excellent: "Excellent Match",
+      moderate: "Moderate Match",
+      growth: "Growth Potential",
+      weak: "Weak Alignment",
+      "excellent match": "Excellent Match",
+      "moderate match": "Moderate Match",
+      "growth potential": "Growth Potential",
+      "weak alignment": "Weak Alignment",
+    };
+
+    const normalizedCategory = categoryMap[matchCategory] || matchCategory;
+    query.matchCategory = normalizedCategory;
+  }
+
+  const applications = await JobApplication.find(query)
+    .populate("applicant", "name email role profilePic")
+    .populate("resume", "file fileName skills keywords")
+    .lean();
+
+  const filteredApplications = search
+    ? applications.filter((application) => {
+        const searchBlob = [
+          application.applicant?.name,
+          application.applicant?.email,
+          application.coverNote,
+          ...(application.aiRecruiterInsights || []),
+          ...(application.aiWeaknesses || []),
+          ...(application.aiHiringSignals || []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return searchBlob.includes(search);
+      })
+    : applications;
+
+  const statusPriority = {
+    shortlisted: 0,
+    reviewed: 1,
+    pending: 2,
+    rejected: 3,
+    withdrawn: 4,
+  };
+
+  filteredApplications.sort((a, b) => {
+    const scoreA = a.aiMatchScore ?? -1;
+    const scoreB = b.aiMatchScore ?? -1;
+
+    if (scoreB !== scoreA) {
+      return scoreB - scoreA;
+    }
+
+    const statusA = statusPriority[a.status] ?? 99;
+    const statusB = statusPriority[b.status] ?? 99;
+
+    if (statusA !== statusB) {
+      return statusA - statusB;
+    }
+
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+
+  const totalCount = filteredApplications.length;
+  const totalPages = Math.ceil(totalCount / limit);
+  const paginatedCandidates = filteredApplications.slice(skip, skip + limit).map((candidate, index) => ({
+    ...candidate,
+    rank: skip + index + 1,
+  }));
+
+  const scoredCandidates = filteredApplications.filter((candidate) => typeof candidate.aiMatchScore === "number");
+  const averageScore = scoredCandidates.length > 0
+    ? Math.round(scoredCandidates.reduce((sum, candidate) => sum + candidate.aiMatchScore, 0) / scoredCandidates.length)
+    : 0;
+
+  return {
+    job,
+    candidates: paginatedCandidates,
+    totalCount,
+    totalPages,
+    currentPage: page,
+    summary: {
+      averageScore,
+      topCandidatesCount: filteredApplications.filter((candidate) => (candidate.aiMatchScore ?? 0) >= 85).length,
+    },
+  };
 };
 
 /**
@@ -1034,6 +1304,34 @@ export const updateApplicationStatus = async (applicationId, recruiterId, { stat
     const roomName = `user_${application.applicant}`;
     io.to(roomName).emit("new-notification", notification);
   }
+
+  return application;
+};
+
+/**
+ * Update the student's personal CRM status for a job application
+ * @param {string} applicationId - ID of the job application
+ * @param {string} applicantId - ID of the student
+ * @param {string} studentStatus - The new status
+ * @returns {Promise<Object>} - Updated application
+ */
+export const updateStudentApplicationStatusService = async (applicationId, applicantId, studentStatus) => {
+  const application = await JobApplication.findOne({
+    _id: applicationId,
+    applicant: applicantId,
+  });
+
+  if (!application) {
+    throw new AppError("Application not found", 404);
+  }
+
+  // Prevent moving withdrawn or rejected applications
+  if (["withdrawn", "rejected"].includes(application.status)) {
+    throw new AppError("Cannot change CRM status for finalized applications", 400);
+  }
+
+  application.studentStatus = studentStatus;
+  await application.save();
 
   return application;
 };
