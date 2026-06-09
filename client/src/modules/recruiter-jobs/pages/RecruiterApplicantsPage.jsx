@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { 
   Users, 
@@ -288,31 +288,24 @@ const RecruiterApplicantsPage = () => {
     careerReadiness !== '';
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#020617] text-slate-900 dark:text-white flex flex-col">
+    <div className="min-h-screen bg-gray-50/50 dark:bg-[#09090b] text-gray-900 dark:text-text-main font-sans pt-20 flex flex-col">
       <Navbar />
 
-      <div className="flex-1 pt-24 pb-16 px-4 sm:px-6 mx-auto max-w-7xl w-full space-y-8">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <button 
-              onClick={() => navigate('/recruiter/jobs')}
-              className="flex items-center gap-2 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-colors text-sm mb-4"
+      <main className="flex-grow flex flex-col items-center justify-start px-4 sm:px-6 lg:px-8 pb-12 animate-fade-in relative overflow-hidden w-full">
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
+          <div className="absolute -top-[10%] -left-[5%] w-[40%] h-[40%] rounded-full bg-blue-100/40 dark:bg-blue-900/10 blur-[120px]" />
+          <div className="absolute top-[20%] -right-[5%] w-[35%] h-[35%] rounded-full bg-purple-100/40 dark:bg-purple-900/10 blur-[100px]" />
+          <div className="absolute top-[5%] right-[20%] w-[35%] h-[35%] rounded-full bg-teal-50/40 dark:bg-teal-900/10 blur-[100px]" />
+        </div>
+
+        <div className="w-full max-w-[1200px] relative z-10 flex flex-col gap-6">
+          <div className="py-6 flex justify-between items-center w-full">
+            <Link 
+              to="/recruiter/jobs" 
+              className="inline-flex items-center gap-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
             >
               <ArrowLeft size={16} /> Back to Jobs
-            </button>
-            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-gray-900 dark:text-white">
-              Applicants for <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400">{job?.title || 'Loading...'}</span>
-            </h1>
-            <div className="flex items-center gap-4 text-gray-500 dark:text-slate-400 text-sm">
-              <span className="flex items-center gap-1.5">
-                <Users size={16} /> {applicants.length} Matching Candidate{applicants.length !== 1 ? 's' : ''}
-              </span>
-              <span className="flex items-center gap-1.5 uppercase tracking-wider text-[10px] font-bold bg-gray-100 dark:bg-white/5 px-2 py-0.5 rounded border border-gray-200 dark:border-white/5">
-                Job ID: {jobId.slice(-6)}
-              </span>
-            </div>
-          </div>
+            </Link>
           
           <div className="relative z-20">
             <button
@@ -345,8 +338,31 @@ const RecruiterApplicantsPage = () => {
           </div>
         </div>
 
+        <div className="text-center space-y-4 mb-6 relative">
+          <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-purple-50 dark:bg-purple-500/10 border border-purple-100 dark:border-purple-500/20 shadow-sm text-[11px] font-bold text-purple-600 dark:text-purple-400 mx-auto tracking-wide uppercase">
+            <Sparkles size={12} className="text-purple-500" /> APPLICANT TRACKING
+          </div>
+          
+          <h1 className="text-4xl md:text-5xl font-black text-gray-900 dark:text-white tracking-tight">
+            <span className="bg-gradient-to-r from-blue-600 via-purple-500 to-teal-400 bg-clip-text text-transparent">Job</span> Applicants
+          </h1>
+          
+          <p className="text-gray-500 dark:text-gray-400 text-[15px] max-w-2xl mx-auto font-medium">
+            Reviewing applicants for <span className="text-indigo-600 dark:text-indigo-400 font-bold">{job?.title || 'Loading...'}</span>
+          </p>
+          
+          <div className="flex items-center justify-center gap-4 text-gray-500 dark:text-slate-400 text-sm mt-2">
+            <span className="flex items-center gap-1.5">
+              <Users size={16} /> {applicants.length} Matching Candidate{applicants.length !== 1 ? 's' : ''}
+            </span>
+            <span className="flex items-center gap-1.5 uppercase tracking-wider text-[10px] font-bold bg-white dark:bg-slate-900/40 px-2 py-0.5 rounded border border-gray-200 dark:border-white/5">
+              Job ID: {jobId.slice(-6)}
+            </span>
+          </div>
+        </div>
+
         {/* AI-Powered Filter Chips Presets */}
-        <div className="space-y-3 bg-white dark:bg-slate-900/20 border border-gray-200 dark:border-white/5 rounded-2xl p-4">
+        <div className="space-y-3 bg-white dark:bg-slate-900/40 border border-gray-200 dark:border-white/5 rounded-3xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest">
             <Sparkles size={14} className="text-blue-400" />
             AI Intelligence Presets
@@ -947,6 +963,7 @@ const RecruiterApplicantsPage = () => {
           </div>
         </div>
       </div>
+      </main>
 
       <StatusUpdateModal 
         isOpen={isModalOpen}
