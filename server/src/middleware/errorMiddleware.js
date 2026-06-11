@@ -259,8 +259,8 @@ const globalErrorHandler = (err, req, res, next) => {
     }
   }
 
-  error.statusCode = error.statusCode || 500;
-  error.status = error.status || "error";
+  error.statusCode = error.statusCode ?? err.statusCode ?? 500;
+  error.status = error.status ?? err.status ?? "error";
 
   if (process.env.NODE_ENV === "development") {
     res.status(error.statusCode).json({
